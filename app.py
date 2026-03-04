@@ -72,12 +72,22 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("⏳ מנסה לעקוף חסימה ולהוריד...")
 
         ydl_opts = {
-            'format': 'bestaudio/best/best',
+            'format': 'bestaudio/best',
             'quiet': True,
             'no_warnings': True,
             'nocheckcertificate': True,
-            'ignoreerrors': True,
-            'extractor_args': {'youtube': {'player_client': ['android', 'web']}}
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Mobile/15E148 Safari/604.1',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-us',
+                'Connection': 'keep-alive',
+            },
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['ios', 'android', 'web_creator'],
+                    'player_skip': ['webpage', 'configs']
+                }
+            }
         }
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -92,7 +102,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await query.delete_message()
             except Exception as e:
                 logger.error(f"DL error: {e}")
-                await query.edit_message_text("❌ יוטיוב חסם את השרת. נסה שוב בעוד דקה או שיר אחר.")
+                await query.edit_message_text("❌ יוטיוב חסם את השרת זמנית. נסה שוב בעוד כמה דקות.")
 
 def main():
     token = os.environ.get("TELEGRAM_TOKEN", "")
