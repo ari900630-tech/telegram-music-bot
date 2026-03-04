@@ -1,1 +1,3 @@
-worker: python app.py
+
+python-telegram-bot
+better_profanity
