@@ -76,17 +76,13 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'quiet': True,
             'no_warnings': True,
             'nocheckcertificate': True,
-            'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Mobile/15E148 Safari/604.1',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language': 'en-us',
-                'Connection': 'keep-alive',
-            },
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['ios', 'android', 'web_creator'],
-                    'player_skip': ['webpage', 'configs']
+                    'player_client': ['tv', 'web_embedded'],
                 }
+            },
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
             }
         }
         
@@ -102,7 +98,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await query.delete_message()
             except Exception as e:
                 logger.error(f"DL error: {e}")
-                await query.edit_message_text("❌ יוטיוב חסם את השרת זמנית. נסה שוב בעוד כמה דקות.")
+                await query.edit_message_text("❌ חסימה חזקה מדי של יוטיוב כרגע. נסה שיר אחר או חזור מאוחר יותר.")
 
 def main():
     token = os.environ.get("TELEGRAM_TOKEN", "")
