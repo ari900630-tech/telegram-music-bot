@@ -1,3 +1,2 @@
-python-telegram-bot
-yt-dlp
-requests
+python-telegram-botpython-telegram-bot
+better_profanity
