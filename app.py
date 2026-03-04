@@ -1,112 +1,105 @@
 import os
 import logging
-import datetime
-import yt_dlp
-import requests
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+import asyncio
+import re
+from datetime import datetime
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler, ContextTypes
+from better_profanity import profanity
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def get_greeting():
-    hour = datetime.datetime.now().hour
-    if 5 <= hour < 12:
-        return "בוקר טוב ☀️"
-    elif 12 <= hour < 18:
-        return "צהריים טובים 🌤️"
-    elif 18 <= hour < 22:
-        return "ערב טוב 🌙"
-    else:
-        return "לילה טוב ✨"
+# רשימת מילים אסורות נוספת בעברית
+HEBREW_BAD_WORDS = ["פורנו", "סקס", "עירום", "זימה"]
+profanity.add_censor_words(HEBREW_BAD_WORDS)
 
-async def search_youtube(query):
-    ydl_opts = {
-        'format': 'bestaudio/best',
-        'quiet': True,
-        'default_search': 'ytsearch100',
-        'noplaylist': True,
-        'extract_flat': True,
-        'nocheckcertificate': True,
-    }
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        try:
-            info = ydl.extract_info(f"ytsearch100:{query}", download=False)
-            return info.get('entries', [])
-        except Exception as e:
-            logger.error(f"Search error: {e}")
-            return []
+# משתנה גלובלי להודעות אוטומטיות
+auto_messages_task = {}
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    greeting = get_greeting()
-    user_name = update.effective_user.first_name
-    text = f"{greeting}, {user_name}!\n\nשלח שם של זמר או שיר לחיפוש."
-    await update.message.reply_text(text)
+    user = update.effective_user
+    keyboard = [
+        [InlineKeyboardButton("אני אדם ✅", callback_data="verify_human")],
+        [InlineKeyboardButton("משחקים 🎮", callback_data="games_menu")],
+        [InlineKeyboardButton("הגדרות ניהול ⚙️", callback_data="admin_settings")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(
+        f"שלום {user.first_name}!\nאני בוט הניהול והמשחקים של הקבוצה.\nאנא אשר שאתה אדם כדי להמשיך.",
+        reply_markup=reply_markup
+    )
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.message.text
-    status_msg = await update.message.reply_text(f"🔍 מחפש את '{query}'...")
-    results = await search_youtube(query)
-    
-    if not results:
-        await status_msg.edit_text("❌ לא נמצאו תוצאות.")
+async def filter_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.message.text:
         return
 
-    keyboard = []
-    for entry in results[:50]:
-        title = entry.get('title', 'שיר')[:35]
-        v_id = entry.get('id')
-        if v_id:
-            keyboard.append([InlineKeyboardButton(title, callback_data=f"dl_{v_id}")])
+    text = update.message.text
+    # בדיקת קישורים
+    url_pattern = r'(https?://[^\s]+|www\.[^\s]+)'
     
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await status_msg.edit_text(f"🎶 תוצאות עבור '{query}':", reply_markup=reply_markup)
+    if profanity.contains_profanity(text) or re.search(url_pattern, text):
+        try:
+            await update.message.delete()
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=f"🚫 {update.effective_user.mention_html()} ההודעה נמחקה כי היא מכילה תוכן אסור או קישור.",
+                parse_mode='HTML'
+            )
+        except Exception as e:
+            logger.error(f"Error deleting message: {e}")
 
-async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    data = query.data
+    await query.answer()
     
-    if data.startswith("dl_"):
-        video_id = data.split("_")[1]
-        await query.answer("מעבד...")
-        await query.edit_message_text("⏳ מוריד דרך שרת מתווך לעקיפת חסימה...")
+    if query.data == "verify_human":
+        await query.edit_message_text("אימות הצליח! כעת יש לך גישה מלאה לקבוצה. ✅")
+    
+    elif query.data == "games_menu":
+        keyboard = [
+            [InlineKeyboardButton("4 בשורה 🔴", callback_data="game_4row")],
+            [InlineKeyboardButton("דמקה 🏁", callback_data="game_checkers")],
+            [InlineKeyboardButton("לוח ציור 🎨", web_app=WebAppInfo(url="https://r-n-d.github.io/draw/"))],
+            [InlineKeyboardButton("חזרה 🔙", callback_data="main_menu")]
+        ]
+        await query.edit_message_text("בחר משחק:", reply_markup=InlineKeyboardMarkup(keyboard))
 
-        ydl_opts = {
-            'format': 'bestaudio/best',
-            'quiet': True,
-            'no_warnings': True,
-            'nocheckcertificate': True,
-            'source_address': '0.0.0.0',
-            'force_ipv4': True,
-            'extractor_args': {
-                'youtube': {
-                    'player_client': ['android_test', 'web_embedded'],
-                }
-            }
-        }
-        
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            try:
-                info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
-                if not info or 'url' not in info:
-                     raise Exception("No URL found")
-                
-                audio_url = info['url']
-                title = info.get('title', 'Music')
-                await context.bot.send_audio(chat_id=query.message.chat_id, audio=audio_url, title=title)
-                await query.delete_message()
-            except Exception as e:
-                logger.error(f"DL error: {e}")
-                # ניסיון אחרון דרך מנוע חלופי
-                await query.edit_message_text("❌ השרת חסום כרגע. נסה שוב בעוד דקה.")
+async def set_auto_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # פורמט: /auto [שניות] [הודעה]
+    if len(context.args) < 2:
+        await update.message.reply_text("שימוש: /auto [שניות] [הודעה]")
+        return
+    
+    seconds = int(context.args[0])
+    message = " ".join(context.args[1:])
+    chat_id = update.effective_chat.id
+    
+    if chat_id in auto_messages_task:
+        auto_messages_task[chat_id].cancel()
+    
+    async def send_loop():
+        while True:
+            await asyncio.sleep(seconds)
+            await context.bot.send_message(chat_id=chat_id, text=f"📢 הודעה אוטומטית:\n{message}")
+    
+    task = asyncio.create_task(send_loop())
+    auto_messages_task[chat_id] = task
+    await update.message.reply_text(f"הודעה אוטומטית הוגדרה כל {seconds} שניות.")
 
 def main():
     token = os.environ.get("TELEGRAM_TOKEN", "")
     if not token: return
+    
     application = Application.builder().token(token).build()
+    
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    application.add_handler(CallbackQueryHandler(handle_callback))
+    application.add_handler(CommandHandler("auto", set_auto_msg))
+    application.add_handler(CallbackQueryHandler(verify_callback))
+    
+    # סינון הודעות (טקסט וקישורים)
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, filter_content))
+    
     application.run_polling()
 
 if __name__ == "__main__":
